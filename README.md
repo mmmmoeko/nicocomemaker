@@ -3,6 +3,9 @@
 既存の動画に、ニコニコ動画風のコメントを流し込んだ動画を作るツール。
 コメントはスプレッドシートで書いて貼り付け、アプリ上で再生しながら微調整できます。
 
+**ブラウザ版 → https://mmmmoeko.github.io/nicocomemaker/**
+インストール不要です。動画もコメントもアップロードされず、すべて手元のブラウザで処理されます。
+
 **動かし方は 2 通りあります。**
 
 | | 起動 | 必要なもの | 向き |
@@ -164,7 +167,10 @@ NICOCOME_OUTPUT=~/Movies npm start
 
 ## ブラウザ版
 
-`web/` フォルダをそのまま静的ホスティング(GitHub Pages など)に上げるだけです。
+**https://mmmmoeko.github.io/nicocomemaker/**
+
+`web/` フォルダをそのまま静的ホスティングに上げるだけです。
+このリポジトリでは `main` に push すると [GitHub Actions](.github/workflows/pages.yml) が自動で公開します。
 **ビルド工程はありません。** `server/` `samples/` `output/` は要りません。
 
 上げる前に手元で同じ状態を確かめられます。

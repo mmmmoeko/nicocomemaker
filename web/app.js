@@ -796,15 +796,19 @@ window.addEventListener('beforeunload', (e) => { if (state.exporting) e.preventD
 // ---------------------------------------------------------------- 起動
 /** ローカルのサーバーがいれば local、いなければ browser */
 async function pickBackend() {
-  try {
-    const local = await import('./backend/local.js');
-    await local.probe();
-    return local;
-  } catch {
-    const browser = await import('./backend/browser.js');
-    await browser.probe();
-    return browser;
+  // ローカル版のサーバーは 127.0.0.1 にしか立たないので、
+  // 公開ホストではそもそも探しに行かない
+  const maybeLocal = ['localhost', '127.0.0.1', '::1', ''].includes(location.hostname);
+  if (maybeLocal) {
+    try {
+      const local = await import('./backend/local.js');
+      await local.probe();
+      return local;
+    } catch { /* サーバーがいなければブラウザ版へ */ }
   }
+  const browser = await import('./backend/browser.js');
+  await browser.probe();
+  return browser;
 }
 
 /** バックエンドが対応していない書き出し先は消す */

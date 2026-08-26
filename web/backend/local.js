@@ -13,14 +13,17 @@ export const capabilities = {
   anyInputFormat: true,
 };
 
+/** サブパスに置かれても外に漏れないよう、API はページからの相対で叩く */
+const api = (p) => new URL(p, document.baseURI).href;
+
 export async function probe() {
-  const res = await fetch('/api/info');
+  const res = await fetch(api('api/info'));
   if (!res.ok) throw new Error('サーバーがいません');
   return res.json();
 }
 
 export async function loadVideo(file, { onProgress }) {
-  const res = await fetch('/api/media', {
+  const res = await fetch(api('api/media'), {
     method: 'POST',
     headers: { 'x-filename': encodeURIComponent(file.name), 'content-type': 'application/octet-stream' },
     body: file,
@@ -28,7 +31,7 @@ export async function loadVideo(file, { onProgress }) {
   const info = await res.json();
   if (!res.ok) throw new Error(info.error || '読み込みに失敗しました');
 
-  let previewUrl = `/api/media/${info.id}/file`;
+  let previewUrl = api(`api/media/${info.id}/file`);
   if (info.needsProxy) {
     onProgress?.(0, 'プレビュー用に変換しています…');
     await makeProxy(info.id, (r) => onProgress?.(r, 'プレビュー用に変換しています…'));
@@ -39,7 +42,7 @@ export async function loadVideo(file, { onProgress }) {
 
 function makeProxy(id, onProgress) {
   return new Promise((resolve, reject) => {
-    const es = new EventSource(`/api/media/${id}/proxy`);
+    const es = new EventSource(api(`api/media/${id}/proxy`));
     es.addEventListener('progress', (e) => onProgress(JSON.parse(e.data).ratio));
     es.addEventListener('done', () => { es.close(); resolve(); });
     es.addEventListener('failed', (e) => { es.close(); reject(new Error(JSON.parse(e.data).error)); });
@@ -59,7 +62,7 @@ const packBatch = (arrs) => {
 };
 
 export async function exportVideo({ media, mode, format, bg, laid, settings, onProgress, isCancelled }) {
-  const start = await fetch('/api/export', {
+  const start = await fetch(api('api/export'), {
     method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ mediaId: media.id, mode, format, bg }),
   }).then(r => r.json().then(j => { if (!r.ok) throw new Error(j.error); return j; }));
@@ -76,7 +79,7 @@ export async function exportVideo({ media, mode, format, bg, laid, settings, onP
     const MAX_BATCH_FRAMES = 60;
 
     const send = async (batch) => {
-      const res = await fetch(`/api/export/${exportId}/frames`, {
+      const res = await fetch(api(`api/export/${exportId}/frames`), {
         method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: packBatch(batch),
       });
       if (!res.ok) throw new Error((await res.json()).error || 'フレームの送信に失敗しました');
@@ -104,18 +107,18 @@ export async function exportVideo({ media, mode, format, bg, laid, settings, onP
     }
 
     onProgress(1, total, total, '仕上げています…');
-    const fin = await fetch(`/api/export/${exportId}/finish`, { method: 'POST' })
+    const fin = await fetch(api(`api/export/${exportId}/finish`), { method: 'POST' })
       .then(r => r.json().then(j => { if (!r.ok) throw new Error(j.error); return j; }));
 
     return {
       name: fin.name, size: fin.size,
-      reveal: () => fetch('/api/reveal', {
+      reveal: () => fetch(api('api/reveal'), {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ path: fin.outPath }),
       }),
     };
   } catch (e) {
-    await fetch(`/api/export/${exportId}/abort`, { method: 'POST' }).catch(() => {});
+    await fetch(api(`api/export/${exportId}/abort`), { method: 'POST' }).catch(() => {});
     throw e;
   }
 }

@@ -1,0 +1,17 @@
+{
+  "name": "nicocomemaker",
+  "version": "0.1.0",
+  "description": "既存の動画にニコニコ動画風のコメントを流し込む動画を作るツール",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node server/index.js",
+    "web": "node server/static.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "mediabunny": "^1.55.2"
+  }
+}

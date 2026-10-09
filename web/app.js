@@ -18,6 +18,7 @@ for (const id of ['bar','drop-hint','stage','video','canvas','stage-busy','busy-
   'del-all','undo','redo','sel-all','errors','tbody','table','empty-state',
   'time-auto','time-manual','auto-opts','auto-mode','auto-rate','auto-rate-row','auto-jitter',
   'auto-start','auto-end-mode','auto-end','auto-readout','auto-fix','auto-all',
+  'density','meter','meter-mark','density-label','density-nums','density-guide',
   'paste-box','paste-area','paste-apply','paste-close','paste-append',
   'empty-paste','empty-apply','empty-csv','empty-one',
   'fields','adv-fields','advanced','reset-settings',
@@ -192,6 +193,7 @@ function refreshComments(structural) {
   updateAutoReadout();
   updateSteps();
   relayout();
+  updateDensity();
   redraw();
   persist();
 }
@@ -481,7 +483,8 @@ function buildSlider(f) {
 
 function syncSettingsUI() {
   for (const el of [...dom.fields.querySelectorAll('[data-path]'), ...dom.advFields.querySelectorAll('[data-path]')]) {
-    if (el._paint) el._paint();
+    if (el._paint) el._paint();                                   // スライダー
+    else if (el.tagName === 'SELECT') el.value = getPath(state.settings, el.dataset.path);
     else el.value = round3(getPath(state.settings, el.dataset.path) * (Number(el.dataset.mul) || 1));
   }
 }
@@ -493,6 +496,84 @@ function onSettingsChanged() {
   // 「見切れないところまで」は横断秒数から終端を決めるので、
   // 表示設定を変えたら自動配置も計算し直す必要がある。
   refreshComments(false);
+}
+
+// ---------------------------------------------------------------- 密度の目安
+// 「この長さなら何件くらいでどう見えるか」を、実際のレイアウトから数えて出す。
+//
+// 目安にするのは画面に出ている個数そのものではなく、**1画面に入る行数と比べた割合**。
+// 文字を大きくすれば行数が減るので、同じ件数でも詰まって見える。そこを織り込む。
+const LEVELS = [
+  { label: 'すかすか', max: 0.4 },
+  { label: 'そこそこ', max: 1.2 },
+  { label: 'ぎっちり', max: 2.4 },
+  { label: '弾幕', max: Infinity },
+];
+
+function computeDensity() {
+  const dur = state.media?.duration ?? 0;
+  const S = state.eff;
+  if (!dur) return null;
+
+  const lanes = S.lineCounts.medium;          // medium のコメントが画面に何行入るか
+  // 流れ始めは画面が埋まりきっていないので、横断ぶんだけ助走を飛ばして数える
+  const from = Math.min(S.scrollDuration, dur * 0.2);
+  const step = Math.max(0.2, (dur - from) / 400);
+
+  let sum = 0, n = 0, peak = 0;
+  for (let t = from; t < dur; t += step) {
+    const k = activeAt(state.laid, t, S).length;
+    sum += k; n++;
+    if (k > peak) peak = k;
+  }
+  const avg = n ? sum / n : 0;
+  const fill = avg / lanes;
+  const level = LEVELS.findIndex(L => fill < L.max);
+
+  // その段階に入る件数(この動画の長さで)
+  const countAt = (f) => Math.round(f * lanes / S.scrollDuration * dur);
+
+  return {
+    avg, peak, fill,
+    level: level < 0 ? LEVELS.length - 1 : level,
+    bounds: LEVELS.slice(0, 3).map(L => countAt(L.max)),
+    capped: peak >= S.maxActive,
+  };
+}
+
+function updateDensity() {
+  const d = computeDensity();
+  const shown = state.comments.length > 0 && !!state.media;
+
+  if (!shown || !d) {
+    dom.meterMark.hidden = true;
+    dom.densityLabel.textContent = '—';
+    dom.densityLabel.className = '';
+    dom.densityNums.textContent = state.media ? 'コメントを入れると出ます' : '動画を入れると出ます';
+    dom.densityGuide.textContent = '';
+    return;
+  }
+
+  const L = LEVELS[d.level];
+  dom.densityLabel.textContent = L.label;
+  dom.densityLabel.className = 'lv' + d.level;
+
+  // 各段階が目盛りの1/4ずつを占めるように印を置く
+  const lo = d.level === 0 ? 0 : LEVELS[d.level - 1].max;
+  const hi = Number.isFinite(L.max) ? L.max : lo * 1.7;
+  const within = Math.min(1, Math.max(0, (d.fill - lo) / (hi - lo)));
+  dom.meterMark.hidden = false;
+  dom.meterMark.style.left = `calc(${((d.level + within) / 4 * 100).toFixed(1)}% - 1.5px)`;
+
+  dom.densityNums.textContent =
+    `画面に平均 ${d.avg.toFixed(1)} 個` + (d.peak > d.avg + 1 ? ` (最大 ${d.peak})` : '') +
+    (d.capped ? ' · 上限に当たっています' : '');
+
+  const [a, b, c] = d.bounds;
+  const len = formatTime(state.media.duration, false);
+  dom.densityGuide.innerHTML =
+    `${len} なら — すかすか <b>〜${a}</b> / そこそこ <b>${a + 1}〜${b}</b> / ` +
+    `ぎっちり <b>${b + 1}〜${c}</b> / 弾幕 <b>${c + 1}〜</b>`;
 }
 
 // ---------------------------------------------------------------- 時刻バー(自動配置)
@@ -591,7 +672,7 @@ function updateAutoReadout() {
   else if (!state.media) html = `自動 <b>${n}</b> 件 — 動画を読み込むと時刻が決まります`;
   else if (!i?.ready) html = `自動 <b>${n}</b> 件`;
   else {
-    html = `自動 <b>${n}</b> 件 — 毎秒 <b>${i.rate.toFixed(2)}</b> 件 · 画面に常時 <b>約 ${i.onScreen.toFixed(1)}</b> 個`;
+    html = `自動 <b>${n}</b> 件 — 毎秒 <b>${i.rate.toFixed(2)}</b> 件`;
     if (i.overflow) html += ` <span class="warn">(${i.overflow} 件が動画の長さを超えています)</span>`;
     else if (i.cramped) html += ` <span class="warn">(動画が短すぎて見切れを防げません)</span>`;
     else html += ` · 最後は ${formatTime(i.end, false)}`;

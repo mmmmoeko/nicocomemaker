@@ -100,6 +100,10 @@ input[type=range] { accent-color: var(--accent); }
 #steps li.now { background: #1c3550; color: var(--fg); }
 #steps li.now i { background: var(--accent); border-color: var(--accent); color: #08121f; font-weight: 600; }
 
+/* 幅が足りないときは案内を畳む(重なって読めなくなるため) */
+@media (max-width: 1100px) { #steps { display: none; } }
+@media (max-width: 820px) { #density-guide { display: none; } }
+
 /* ---------- ドロップ ---------- */
 #drop-hint {
   position: fixed; inset: 0; z-index: 50;
@@ -206,6 +210,36 @@ main { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 #auto-readout { font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
 #auto-readout b { color: var(--accent); font-weight: 600; }
 #auto-readout .warn { color: var(--danger); }
+
+/* ---------- 密度の目安 ---------- */
+#density {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 5px 12px; background: #15181e;
+  border-bottom: 1px solid var(--line); flex-shrink: 0;
+}
+#meter {
+  position: relative; display: flex; width: 168px; height: 9px;
+  border-radius: 5px; overflow: hidden; background: var(--bg3);
+}
+#meter .seg { flex: 1; opacity: .34; }
+#meter .seg + .seg { border-left: 1px solid #15181e; }
+#meter .s0 { background: #6f7686; }
+#meter .s1 { background: var(--ok); }
+#meter .s2 { background: #fbbf24; }
+#meter .s3 { background: var(--danger); }
+#meter-mark {
+  position: absolute; top: -2px; width: 3px; height: 13px;
+  background: var(--fg); border-radius: 2px;
+  box-shadow: 0 0 0 1px #15181e;
+  transition: left .15s ease;
+}
+#density-label { font-size: 12.5px; font-weight: 600; }
+#density-label.lv0 { color: #8d95a5; }
+#density-label.lv1 { color: var(--ok); }
+#density-label.lv2 { color: #fbbf24; }
+#density-label.lv3 { color: var(--danger); }
+#density-nums, #density-guide { font-size: 11.5px; font-variant-numeric: tabular-nums; }
+#density-guide b { color: #b9c0cd; font-weight: 500; }
 
 /* ---------- 貼り付け ---------- */
 #paste-box {

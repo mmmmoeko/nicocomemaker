@@ -55,8 +55,26 @@ export function fontMetrics(settings, size) {
 export const clearMetricsCache = () => metricsCache.clear();
 
 /**
+ * そのレーンが新しいコメントを受け入れられるか。
+ *
+ * 流れるコメントは「画面幅 + 自分の幅」を一定時間で渡るので、**長いコメントほど速い**。
+ * そのため、先に入った短いコメントに後から来た長いコメントが追いつく。
+ * 本家が速度差まで見ているのはこのため。2 つの条件を両方満たす必要がある。
+ *
+ *   (a) 入った瞬間に、先客の右端を踏まない
+ *   (b) 先客が画面から出きるまでに、追いついて追い越さない
+ *
+ * どちらも「先客が入ってから何秒あければよいか」の形に直せる。
+ */
+function naKaLaneFree(b, t, w, baseW, D, pad) {
+  const needEnter = D * (b.w + pad) / (baseW + b.w);  // (a) 先客の幅ぶん先に行かせる
+  const needCatch = D * (w + pad) / (baseW + w);      // (b) 自分の速さで追いつかない間隔
+  return (t - b.time) >= Math.max(needEnter, needCatch);
+}
+
+/**
  * 空きスロットを探す。
- * blockers: [{y, h}] その時刻にまだ場所を占有しているもの
+ * blockers: [{y, h}] その時刻に場所を譲れないもの
  * fromTop=false なら下から詰める(shita 用)
  * 見つからなければ null
  */
@@ -73,6 +91,28 @@ function findSlot(blockers, h, baseH, fromTop) {
 }
 
 /**
+ * どこにも空きが無いときの置き場所。
+ * ランダムに置くと先客の真上に乗って最後まで読めなくなるので、
+ * 「重なる高さ × 重なっている時間」が最小になる位置を選ぶ。
+ */
+function leastBadSlot(blockers, h, baseH, t) {
+  const cands = new Set([0, baseH - h]);
+  for (const b of blockers) { cands.add(b.y + b.h); cands.add(b.y - h); }
+
+  let best = 0, bestCost = Infinity;
+  for (const raw of cands) {
+    const y = Math.max(0, Math.min(baseH - h, raw));
+    let cost = 0;
+    for (const b of blockers) {
+      const ov = Math.min(y + h, b.y + b.h) - Math.max(y, b.y);
+      if (ov > 0) cost += ov * Math.max(0, b.gone - t);
+    }
+    if (cost < bestCost - 1e-9) { bestCost = cost; best = y; }
+  }
+  return best;
+}
+
+/**
  * コメント配列にレイアウトを付与して返す(元の配列は変更しない)。
  * 返り値の各要素には以下が加わる:
  *   _lines 描画する行  _w 幅  _h 高さ  _fs フォントサイズ  _lh 行高
@@ -83,7 +123,6 @@ export function layout(comments, videoW, videoH, settings) {
   const ctx = getMeasureCtx();
   const baseW = stageWidth(videoW, videoH);
   const baseH = BASE_HEIGHT;
-  const colRight = baseW * settings.collisionRight;
   const pad = baseW * settings.collisionPadding;
 
   const sorted = [...comments].sort((a, b) => a.time - b.time || (a.id < b.id ? -1 : 1));
@@ -117,27 +156,22 @@ export function layout(comments, videoW, videoH, settings) {
       continue;
     }
 
-    // レーンが空く時刻
-    let freeAt;
-    if (d.pos === 'naka') {
-      // 右端の判定ラインを抜けきったら、後続を入れてよい
-      const t = (baseW + w - colRight + pad) / d._speed;
-      freeAt = d.time + Math.max(0, Math.min(settings.scrollDuration, t));
-    } else {
-      freeAt = d.end;
-    }
-
     const list = slots[d.pos];
-    // 期限切れを掃除
-    for (let i = list.length - 1; i >= 0; i--) if (list[i].free <= d.time) list.splice(i, 1);
+    // 画面から消えたものを捨てる
+    for (let i = list.length - 1; i >= 0; i--) if (list[i].gone <= d.time) list.splice(i, 1);
 
-    let y = findSlot(list, h, baseH, d.pos !== 'shita');
+    // まだ場所を譲れないものだけを障害物として見る
+    const blockers = d.pos === 'naka'
+      ? list.filter(b => !naKaLaneFree(b, d.time, w, baseW, settings.scrollDuration, pad))
+      : list;  // ue / shita は静止しているので、消えるまでずっと障害物
+
+    let y = findSlot(blockers, h, baseH, d.pos !== 'shita');
     d.overlapped = y === null;
-    if (y === null) y = seededUnit(d.id) * Math.max(0, baseH - h); // 空き無し → 重ねる
+    if (y === null) y = leastBadSlot(blockers, h, baseH, d.time);
 
     d.y = y;
     d.visible = true;
-    list.push({ y, h, free: freeAt });
+    list.push({ y, h, w, time: d.time, gone: d.end });
 
     // active を終了時刻の昇順に保つ
     const at = d.end;

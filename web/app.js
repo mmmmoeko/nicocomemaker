@@ -389,10 +389,11 @@ const ADV_FIELDS = [
   { path: 'strokeWidth', label: '線幅', type: 'number', min: 0, max: 20, step: 0.1 },
   { group: 'その他' },
   { path: 'maxLength', label: '1件の最大文字数', type: 'number', min: 1, max: 500, step: 1 },
-  { path: 'collisionRight', label: '当たり判定の右端', type: 'number', min: 0.2, max: 1, step: 0.01 },
-  { note: '小さくすると、コメントが早めに次の行を空けるので詰まりにくくなります。' },
+  { path: 'collisionPadding', label: 'コメント間の余白', type: 'number', min: 0, max: 100, step: 1, mul: 1920 },
+  { note: '同じ行に続けて流すときの、前のコメントとの最小のすき間です(1920幅での px)。大きくすると重なりにくくなりますが、同じ行に入る数が減ります。' },
 ];
 
+const round3 = (v) => Math.round(v * 1000) / 1000;
 const getPath = (o, p) => p.split('.').reduce((a, k) => a[k], o);
 const setPath = (o, p, v) => { const ks = p.split('.'); const last = ks.pop(); ks.reduce((a, k) => a[k], o)[last] = v; };
 
@@ -421,12 +422,16 @@ function buildFields(container, spec) {
       input.value = getPath(state.settings, f.path);
       input.onchange = () => { setPath(state.settings, f.path, input.value); onSettingsChanged(); };
     } else {
+      // mul があるときは、見せる値と持つ値の単位が違う(比率 ↔ px など)
+      const mul = f.mul || 1;
       input = Object.assign(document.createElement('input'),
-        { type: 'number', min: f.min, max: f.max, step: f.step, value: getPath(state.settings, f.path) });
+        { type: 'number', min: f.min, max: f.max, step: f.step,
+          value: round3(getPath(state.settings, f.path) * mul) });
+      input.dataset.mul = String(mul);
       input.oninput = () => {
         const v = Number(input.value);
         if (!Number.isFinite(v) || v < f.min || v > f.max) return;
-        setPath(state.settings, f.path, v); onSettingsChanged();
+        setPath(state.settings, f.path, v / mul); onSettingsChanged();
       };
     }
     input.dataset.path = f.path;
@@ -477,7 +482,7 @@ function buildSlider(f) {
 function syncSettingsUI() {
   for (const el of [...dom.fields.querySelectorAll('[data-path]'), ...dom.advFields.querySelectorAll('[data-path]')]) {
     if (el._paint) el._paint();
-    else el.value = getPath(state.settings, el.dataset.path);
+    else el.value = round3(getPath(state.settings, el.dataset.path) * (Number(el.dataset.mul) || 1));
   }
 }
 

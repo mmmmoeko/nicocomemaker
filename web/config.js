@@ -24,9 +24,7 @@ export const DEFAULT_SETTINGS = {
   maxActive: 40,       // 同時表示数の上限
   maxLength: 75,       // 1コメントの最大文字数
 
-  // 当たり判定(ステージ幅に対する比率)。本家は 1920幅中 235〜1685
-  collisionLeft: 235 / 1920,
-  collisionRight: 1685 / 1920,
+  // コメント同士の横の余白(ステージ幅に対する比率)。本家は 1920幅中 5px
   collisionPadding: 5 / 1920,
 
   fontFamily: BUNDLED_FONT,
